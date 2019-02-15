@@ -44,7 +44,10 @@ filename=${file}.prs.${SGE_TASK_ID}
         herit=${info[7]}
         target_geno=${info[9]}
         valid_geno=${info[10]}
-        if [[ ${herit} -ne 0 ]]; then 
+
+        if [[ "${herit}" -eq 0 ]]; then 
+            echo "Skip Heritability == 0"
+        else
             # We do not time the validation step
             \time -f "%e %S %U %P %K %I %O %W %M" -o ${out}.lassosum.tmp \
                 Rscript ${lassosum} \
