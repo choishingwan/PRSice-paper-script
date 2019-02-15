@@ -47,7 +47,9 @@ filename=${file}.prs.${SGE_TASK_ID}
 		rm ${out}.coord
         # Ignore heritability = 0 cases as those will crash LDpred + one shouldn't
         # perform PRS analysis on traits with SNP heritability = 0
-        if [[ "${herit}" -ne 0 ]]; then
+        if [[ "${herit}" -eq 0 ]]; then 
+            echo "Skip Heritability == 0"
+        else
             \time -f "%e %S %U %P %K %I %O %W %M" -o ${out}.ldpred.tmp \
             sh -c "
                 python3.5 ${ldpred} coord \
