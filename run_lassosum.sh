@@ -12,7 +12,6 @@ module add bioinformatics/R/3.3.3
 module add compilers/gcc/6.2.0
 # Need an input file prefix
 # Required input
-# bfile -> Genotype file prefix
 # file -> Prefix of PRS guide
 # lassosum -> location of lassosum.R
 # LD -> location of the LD file
@@ -45,7 +44,7 @@ filename=${file}.prs.${SGE_TASK_ID}
         target_geno=${info[9]}
         valid_geno=${info[10]}
 
-        if [[ "${herit}" -eq 0 ]]; then 
+        if (( $(echo ${herit}'=='0 | bc -l) )); then 
             echo "Skip Heritability == 0"
         else
             # We do not time the validation step
@@ -57,22 +56,27 @@ filename=${file}.prs.${SGE_TASK_ID}
                     --genotype ${target_geno} \
                     --ld ${LD} \
                     --size ${base_size} \
-                    --out ${out}.lassosum
-                    
-            Rscript ${lassosum} \
-                --base ${base_assoc} \
-                --ref ${valid_geno} \
-                --target ${out}.lassosum.Rdata \
-                --valid ${valid_pheno} \
-                --genotype ${valid_geno} \
-                --ld ${LD} \
-                --size ${base_size} \
-                --out ${out}
-
-            rm ${out}.lassosum.Rdata
+                    --out ${out}
+                
             r2=`awk 'NR!=1{print $2}' ${out}.lassosum`
-            valid_r2=`awk 'NR!=1{print $3}' ${out}.lassosum`
-            awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v VR2=${valid_r2}  'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,"-",VR2,"-","lassosum"}' ${out}.lassosum.tmp > ${out}.lassosum.result
+            if [[ "${valid_geno}" != "NA" ]]; then
+                Rscript ${lassosum} \
+                    --base ${base_assoc} \
+                    --ref ${valid_geno} \
+                    --target ${out}.Rdata \
+                    --valid ${valid_pheno} \
+                    --genotype ${valid_geno} \
+                    --ld ${LD} \
+                    --size ${base_size} \
+                    --out ${out}
+                valid_r2=`awk 'NR!=1{print $3}' ${out}.lassosum`
+                awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v VR2=${valid_r2}  'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,"NA",VR2,"NA","lassosum"}' ${out}.lassosum.tmp > ${out}.lassosum.result
+            else
+				echo ${r2} 
+                awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2}   'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,"NA","NA","NA","lassosum"}' ${out}.lassosum.tmp > ${out}.lassosum.result
+            fi
+            rm ${out}.Rdata
+            
             rm ${out}.lassosum.tmp
         fi
     done } < "$filename"

@@ -11,7 +11,6 @@ module add bioinformatics/R/3.3.3
 module add compilers/gcc/6.2.0
 # Need an input file prefix
 # Required input
-# bfile -> Genotype file prefix
 # file -> Prefix of PRS guide
 # PRSice -> location of PRSice
 
@@ -57,22 +56,25 @@ filename=${file}.prs.${SGE_TASK_ID}
         threshold=`awk 'NR!=1{print $3}' ${out}.summary`
         r2=`awk 'NR!=1{print $4}' ${out}.summary`
         pvalue=`awk 'NR!=1{print $10}' ${out}.summary`
-        ${prsice} \
-            --base ${base_assoc} \
-            --target ${valid_geno} \
-            --binary-target F \
-            --bar-levels ${threshold} \
-            --no-full \
-            --beta \
-            --fastscore \
-            --out ${out}.valid \
-            --pheno-file ${valid_pheno} \
-            --thread max
-        rm ${out}.valid.best
-        rm ${out}.valid.prsice
-
-        valid_r2=`awk 'NR!=1{print $4}' ${out}.valid.summary`
-        valid_pvalue=`awk 'NR!=1{print $10}' ${out}.valid.summary`
-        awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v P=${pvalue} -v VR2=${valid_r2} -v VP=${valid_pvalue} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,P,VR2,VP,"PRSice-2"}' ${out}.tmp > ${out}.prsice.result
+        if [[ "${valid_geno}" != "NA" ]]; then
+            ${prsice} \
+                --base ${base_assoc} \
+                --target ${valid_geno} \
+                --binary-target F \
+                --bar-levels ${threshold} \
+                --no-full \
+                --beta \
+                --fastscore \
+                --out ${out}.valid \
+                --pheno-file ${valid_pheno} \
+                --thread max
+            rm ${out}.valid.best
+            rm ${out}.valid.prsice
+            valid_r2=`awk 'NR!=1{print $4}' ${out}.valid.summary`
+            valid_pvalue=`awk 'NR!=1{print $10}' ${out}.valid.summary`
+            awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v P=${pvalue} -v VR2=${valid_r2} -v VP=${valid_pvalue} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,P,VR2,VP,"PRSice-2"}' ${out}.tmp > ${out}.prsice.result
+        else
+            awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v P=${pvalue} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,P,"NA","NA","PRSice-2"}' ${out}.tmp > ${out}.prsice.result
+        fi
         rm ${out}.tmp
     done } < "$filename"

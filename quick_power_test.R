@@ -6,7 +6,6 @@ library(codetools)
 options(scipen = 999)
 
 
-
 option_list <- list(
     make_option(c("--bfile", "-b"), type = "character", help = "PLINK prefix"),
     make_option(c("--fam", "-f"), type = "character", help = "QCed sample list"),
@@ -46,10 +45,9 @@ fam.read <- function(..., data.table = FALSE) {
 
 # Parameters  -------------------------------------------------------------
 
-num.causal <- c(100, 1000, 10000, 100000)
-target.size <- c(100, 1000, 10000, 100000)
-validate.size <- 10000
-heritability <- c(0, 0.2, 0.4, 0.6, 0.8)
+num.causal <- c(560173)
+target.size <- 10000
+heritability <- c(0.6)
 base.size <- 200000
 max.batch <- 80
 # Biobank simulator
@@ -110,6 +108,29 @@ if (!argv$quick) {
                 paste(heritability, collapse = ",") # Heritability of phenotype to be simulated
             )
         )
+        #system2(
+        #    bbs,
+        #    args = c(
+        #        "-i",
+        #        argv$bfile,
+                # use the biobank genotype file
+        #        "-o",
+        #        paste0(name, "-std"),
+        #        "-n",
+        #        causal,
+        #        "-e 2",
+                # Effect sizes are simulated under normal distribution
+        #        "-E",
+        #        argv$snp,
+        #        "-k",
+        #        paste0(argv$out, ".valid.samples"),
+                # samples to be included in the simulation
+        #        "-H",
+        #        paste(heritability, collapse = ","),
+                # Heritability of phenotype to be simulated
+        #        "--std"
+        #    )
+        #)
     }
 }
 
@@ -156,44 +177,27 @@ prs.guide <- data.frame(
 )
 plink.guide <- data.frame(Prefix = character())
 for (causal in num.causal) {
-    name <- paste(argv$out, causal, sep = "-")
-    pheno <- fread(name, header = T, data.table = F)
-    info <- inner_join(pheno, covariate) %>%
-        drop_na()
-    phenotypes <- data.frame(FID = info$FID, IID = info$IID)
-    
-    base.validate <-
-        sample.int(n = nrow(phenotypes), size = base.size + validate.size)
-    base.samples <- sort(head(base.validate, n = base.size))
-    validate.samples <-
-        sort(base.validate[!base.validate %in% base.samples])
-    # All target samples should be sampled from this pool
-    # And we can do the residualization within these sample in one go s
-    target.pool <-
-        c(1:nrow(phenotypes))[!c(1:nrow(phenotypes)) %in% base.validate]
-    print("Residualizing phenotypes")
-    base.data <- phenotypes[base.samples,]
-    validate.data <- phenotypes[validate.samples,]
-    valid.filter.name <- paste(name, "valid", sep = "-")
-    write.table(validate.data,
-                valid.filter.name,
-                quote = F,
-                row.names = F)
-    plink.guide <-
-        rbind(plink.guide, data.frame(Prefix = valid.filter.name))
-    generated <- F
-    target.data <- info[target.pool,]
-    for (target in target.size) {
-        # We do target before heritability such that we can use the same subset of target
-        # for different heritability. This help us to reduce the number bninary file we
-        # need to generate for LDPred as it doesn't support sample filtering or
-        # SNP filtering
-        target.select <- sort(sample.int(n=length(target.pool), size=target))
-        target.filter.name <- paste(name, target, "target", sep = "-")
-        write.table(target.data[target.select,c("FID","IID")],
-                    target.filter.name,
-                    quote = F,
-                    row.names = F)
+    for (suffix in c("")) {
+        out <- paste(argv$out, causal, sep = "-")
+        name <- paste0(out, suffix)
+        pheno <- fread(name, header = T, data.table = F)
+        info <- inner_join(pheno, covariate) %>%
+            drop_na()
+        base.samples <- info %>%
+            sample_n(base.size)
+        
+        # All target samples should be sampled from this pool
+        # And we can do the residualization within these sample in one go s
+        target.samples <- info %>%
+            filter(!FID %in% base.samples$FID) %>%
+            sample_n(target.size)
+        print("Residualizing phenotypes")
+        target.filter.name <- paste(name, "target", sep = "-")
+        target.samples %>%
+            select(FID, IID) %>%
+            write.table(target.filter.name,
+                        quote = F,
+                        row.names = F)
         plink.guide <-
             rbind(plink.guide,
                   data.frame(Prefix = target.filter.name))
@@ -201,7 +205,7 @@ for (causal in num.causal) {
             h.name <- paste0("h_", h)
             cur.name <- paste0(name, "-", h.name)
             target.name <-
-                paste(cur.name, target, "target", sep = "-")
+                paste(cur.name, target.size, "target", sep = "-")
             equation <-
                 as.formula(paste0(
                     h.name,
@@ -211,47 +215,35 @@ for (causal in num.causal) {
             # disadvantage of this procedure is that we will repeatly do the
             # regression multiple time.
             base.name <- paste0(cur.name, "-base")
-            valid.name <- paste0(cur.name, "-valid")
-            if (!generated) {
-                base.pheno <-
-                    rstandard(lm(equation, data = info[base.samples, ]))
-                validate.pheno <-
-                    rstandard(lm(equation , data = info[validate.samples, ]))
-                base.data$Pheno <- base.pheno
-                validate.data$Pheno <- validate.pheno
-                fwrite(
-                    base.data,
-                    file = base.name,
-                    sep = "\t",
-                    row.names = F,
-                    quote = F
-                )
-                fwrite(
-                    validate.data,
-                    file = valid.name,
-                    sep = "\t",
-                    row.names = F,
-                    quote = F
-                )
-                gwas.guide <-
-                    rbind(
-                        gwas.guide,
-                        data.frame(
-                            Prefix = base.name,
-                            Heritability = h,
-                            Num.Causal = causal,
-                            Pheno.File = base.name
-                        )
-                    )
-                target.pheno <-
-                    rstandard(lm(equation , data = target.data))
-                target.data[,h.name] <- target.pheno
-            }
-            target.res <- target.data[target.select,c("FID", "IID")]
-            target.res$Pheno <- target.data[target.select, h.name]
-            
+            base.pheno <-
+                rstandard(lm(equation, data = base.samples))
+            base.data <- base.samples %>%
+                select(FID, IID) %>%
+                mutate(Pheno = base.pheno)
             fwrite(
-                target.res,
+                base.data,
+                file = base.name,
+                sep = "\t",
+                row.names = F,
+                quote = F
+            )
+            gwas.guide <-
+                rbind(
+                    gwas.guide,
+                    data.frame(
+                        Prefix = base.name,
+                        Heritability = h,
+                        Num.Causal = causal,
+                        Pheno.File = base.name
+                    )
+                )
+            target.pheno <-
+                rstandard(lm(equation , data = target.samples))
+            target.data <- target.samples %>%
+                select(FID, IID) %>%
+                mutate(Pheno = target.pheno)
+            fwrite(
+                target.data,
                 file = target.name,
                 sep = "\t",
                 quote = F,
@@ -265,17 +257,16 @@ for (causal in num.causal) {
                         Base.Size = base.size,
                         Prefix = target.name,
                         Target.Pheno = target.name,
-                        Target.Size = target,
-                        Validate.Pheno = valid.name,
+                        Target.Size = target.size,
+                        Validate.Pheno = NA,
                         Num.Causal = causal,
                         Heritability = h,
                         Radius = radius,
                         Target.Plink = target.filter.name,
-                        Valid.Plink = valid.filter.name
+                        Valid.Plink = NA
                     )
                 )
         }
-        generated <- T
     }
 }
 
@@ -288,7 +279,7 @@ chunks <- chunk2(1:total.num, max.batch)
 chunk.id <- 1
 
 for (i in chunks) {
-    gwas.guide[i, ] %>%
+    gwas.guide[i,] %>%
         write.table(
             paste(argv$out, "gwas", chunk.id, sep = "."),
             quote = F,
@@ -302,7 +293,7 @@ total.prs <- nrow(prs.guide)
 chunks <- chunk2(1:total.prs, max.batch)
 chunk.id <- 1
 for (i in chunks) {
-    prs.guide[i, ] %>%
+    prs.guide[i,] %>%
         write.table(
             paste(argv$out, "prs", chunk.id, sep = "."),
             quote = F,
@@ -329,7 +320,7 @@ chunks <- chunk2(1:total.num, max.batch)
 chunk.id <- 1
 
 for (i in chunks) {
-    plink.guide[i, ] %>%
+    plink.guide[i,] %>%
         write.table(
             paste(argv$out, "plink", chunk.id, sep = "."),
             quote = F,
@@ -338,4 +329,10 @@ for (i in chunks) {
     chunk.id <- chunk.id + 1
 }
 
-write.table(plink.guide, paste(argv$out, "plink","full", sep = "."), quote=F, row.names=F , col.names = F)
+write.table(
+    plink.guide,
+    paste(argv$out, "plink", "full", sep = "."),
+    quote = F,
+    row.names = F ,
+    col.names = F
+)

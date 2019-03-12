@@ -13,7 +13,6 @@ module add general/python/3.5.1
 source ~/.bash_profile 
 # Need an input file prefix
 # Required input
-# bfile -> Genotype file prefix
 # file -> Prefix of PRS guide
 # ldpred -> location of LDPRed
 
@@ -47,7 +46,7 @@ filename=${file}.prs.${SGE_TASK_ID}
 		rm ${out}.coord
         # Ignore heritability = 0 cases as those will crash LDpred + one shouldn't
         # perform PRS analysis on traits with SNP heritability = 0
-        if [[ "${herit}" -eq 0 ]]; then 
+        if (( $(echo ${herit}'=='0 | bc -l) )); then 
             echo "Skip Heritability == 0"
         else
             \time -f "%e %S %U %P %K %I %O %W %M" -o ${out}.ldpred.tmp \
@@ -82,40 +81,45 @@ filename=${file}.prs.${SGE_TASK_ID}
                     --pf-format LSTANDARD 
     "
             result=(`awk -v max=-1,id=0 '$2>max{max=$2;id=$1}END{print id,max}' ${out}.score`)
-            if [[ "${result[0]}" == "inf" ]]; then
-                python3.5 ${ldpred} inf \
-                    --cf ${out}.coord \
-                    --ldr ${radius} \
-                    --ldf ${out}.valid.ld \
-                    --out ${out}.weight \
-                    --N ${base_size}
-                    ##_LDpred-inf.txt
-                rm ${out}.coord
-                python3.5 ${ldpred} score \
-                    --gf ${valid_geno} \
-                    --rf ${out}.weight \
-                    --out ${out}.score \
-                    --pf ${valid_pheno} \
-                    --pf-format LSTANDARD  
-            else
-                python3.5 ${ldpred} gibbs \
-                    --cf ${out}.coord \
-                    --ldr ${radius} \
-                    --ldf ${out}.valid.ld \
-                    --out ${out}.weight \
-                    --N ${base_size} \
-                    --f ${result[0]}
-                rm ${out}.ldpred_LDpred-inf.txt 
-                rm ${out}.coord
-                python3.5 ${ldpred} score \
-                    --gf ${valid_geno} \
-                    --rf ${out}.weight \
-                    --out ${out}.score \
-                    --pf ${valid_pheno} \
-                    --pf-format LSTANDARD 
+            if [[ "${valid_geno}" != "NA" ]]; then
+                if [[ "${result[0]}" == "inf" ]]; then
+                    python3.5 ${ldpred} inf \
+                        --cf ${out}.coord \
+                        --ldr ${radius} \
+                        --ldf ${out}.valid.ld \
+                        --out ${out}.weight \
+                        --N ${base_size}
+                        ##_LDpred-inf.txt
+                    rm ${out}.coord
+                    python3.5 ${ldpred} score \
+                        --gf ${valid_geno} \
+                        --rf ${out}.weight \
+                        --out ${out}.score \
+                        --pf ${valid_pheno} \
+                        --pf-format LSTANDARD  
+                else
+                    python3.5 ${ldpred} gibbs \
+                        --cf ${out}.coord \
+                        --ldr ${radius} \
+                        --ldf ${out}.valid.ld \
+                        --out ${out}.weight \
+                        --N ${base_size} \
+                        --f ${result[0]}
+                    rm ${out}.ldpred_LDpred-inf.txt 
+                    rm ${out}.coord
+                    python3.5 ${ldpred} score \
+                        --gf ${valid_geno} \
+                        --rf ${out}.weight \
+                        --out ${out}.score \
+                        --pf ${valid_pheno} \
+                        --pf-format LSTANDARD 
+                fi
+                vres=(`awk -v max=-1,id=0 '$2>max{max=$2;id=$1}END{print id,max}' ${out}.vldpred`)
+                awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${result[1]} -v VR2=${vres[1]} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,"NA",VR2,"NA","LDPred"}' ${out}.ldpred.tmp > ${out}.ldpred.result
+            else 
+                awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${result[1]} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,"NA","NA","NA","LDPred"}' ${out}.ldpred.tmp > ${out}.ldpred.result
             fi
-            vres=(`awk -v max=-1,id=0 '$2>max{max=$2;id=$1}END{print id,max}' ${out}.vldpred`)
-            awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${result[1]} -v VR2=${vres[1]} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,"NA",VR2,"NA","LDPred"}' ${out}.ldpred.tmp > ${out}.ldpred.result
+            
             rm ${out}.ldpred.tmp
         fi
     done } < "$filename"

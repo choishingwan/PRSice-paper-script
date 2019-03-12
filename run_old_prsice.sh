@@ -11,7 +11,6 @@ module add bioinformatics/R/3.3.3
 module add compilers/gcc/6.2.0
 # Need an input file prefix
 # Required input
-# bfile -> Genotype file prefix
 # file -> Prefix of PRS guide
 # PRSice -> location of PRSice
 

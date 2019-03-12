@@ -9,7 +9,6 @@ module add bioinformatics/plink2/1.90b3.38
 module add bioinformatics/R/3.3.3
 module add compilers/gcc/6.2.0
 
-# qsub -v file=sim5,bfile=/mnt/lustre/groups/ukbiobank/usr/sam/project/PRS/sample_overlap/raw/ukb_binary_v2,snp=/mnt/lustre/groups/ukbiobank/usr/sam/project/PRS/sample_overlap/raw/ukb_binary_v2.qc.snp,script=/mnt/lustre/groups/ukbiobank/usr/sam/project/PRS/sample_overlap/scripts/p2t.R ../scripts/run_gwas.sh
 # Need an input file prefix
 # Required input
 # bfile -> Genotype file prefix
