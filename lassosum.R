@@ -68,7 +68,6 @@ if (is.null(argv$valid)) {
     out2 <-
         subset(out, s = target.res$best.s, lambda = target.res$best.lambda)
     # output the object
-    save(out2, r2, file = paste0(prefix, ".Rdata"))
     
     data.frame(Program = "lassosum",
                R2 = r2 ^ 2,
@@ -76,6 +75,7 @@ if (is.null(argv$valid)) {
         write.table(paste0(prefix, ".lassosum"),
                     quote = F,
                     row.names = F)
+	save(out2, r2, file = paste0(prefix, ".Rdata"))
 } else{
     # Validation
     # We on purposely separate out the validation step and the optimization step so that we only time the optimization step

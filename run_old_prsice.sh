@@ -1,37 +1,31 @@
-#!/bin/bash
-#$ -cwd
-#$ -j y
-#$ -S /bin/bash
-#$ -q HighMemLongterm.q,LowMemLongterm.q,LowMemShortterm.q
-#$ -t 1:80
-#$ -l h_rt=72:00:00
+#BSUB -L /bin/sh             # script shell language (/bin/tcsh, /bin/ksh etc.)
+#BSUB -n 1              # number of cores required
+#BSUB -J %FILE%_oprsice[1-80]%36
+#BSUB -q express               # target queue for job execution
+#BSUB -W 10:00                # wall clock limit for job
+#BSUB -P acc_psychgen             # project to charge time
+#BSUB -o %FILE%_oprsice.o%J.%I
+#BSUB -eo %FILE%_oprsice.e%J.%I
+#BSUB -M 40000
+module add plink/1.90b6.7
+module add R
+# Unfortunately, we can't run PRSice-1.25 on the /dev/shm due to the large amount of intermediate file generated
+loc=/local/tmp/chois26_prsice${LSB_JOBID}_${LSB_JOBINDEX}
 
-module add bioinformatics/plink2/1.90b3.38
-module add bioinformatics/R/3.3.3
-module add compilers/gcc/6.2.0
-# Need an input file prefix
-# Required input
-# file -> Prefix of PRS guide
-# PRSice -> location of PRSice
-
-# 0 = Base.Assoc
-# 1 = Base.Size 
-# 2 = Prefix
-# 3 = Target.Pheno
-# 4 = Target.Size
-# 5 = Validate.Pheno 
-# 6 = Num.Causal 
-# 7 = Heritability 
-# 8 = Radius 
-# 9 = Target Genotype
-# 10 = Valid Genotype
-loc=`pwd`
-filename=${file}.prs.${SGE_TASK_ID}
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+mkdir -p ${loc}
+chmod 700 ${loc}
+cur=`pwd`
+prsice=/sc/orga/projects/psychgen/ukb/usrs/sam/project/prs/giga_software/software/old-prsice/PRSice_v1.25/PRSice_v1.25.R
+filename=%FILE%.prs.${LSB_JOBINDEX}
 {
     read -r line
     while read -r line; do
         info=( ${line} )
         base_assoc=${info[0]}
+        base_size=${info[1]}
         out=${info[2]}
         target_pheno=${info[3]}
         valid_pheno=${info[5]}
@@ -40,31 +34,45 @@ filename=${file}.prs.${SGE_TASK_ID}
         herit=${info[7]}
         target_geno=${info[9]}
         valid_geno=${info[10]}
-        if [[ "${herit}" -eq 0 ]]; then 
+	if [[ $(echo ${herit}'=='0.2 | bc -l) -eq 1 ]]; then
             # We don't want to analyze data with more than 10000 sample or else it will 
             # blow up our storage space
             if [[ "${target_size}" -lt 100000 ]]; then
                 # Need to work within a specific folder to avoid over-writing the results between different jobs
-                mkdir -p ${loc}/${out}-tmp
-                zcat ${base_assoc} > ${loc}/${out}-tmp/${out}.assoc
-                awk 'NR!=1 {print $1,$3}' ${target_pheno} > ${loc}/${out}-tmp/${out}.pheno
-                cd ${loc}/${out}-tmp
-            
+                base_name=$(basename -- "${base_assoc}")
+        	target_pheno_name=$(basename -- "${target_pheno}")
+        	target_geno_name=$(basename -- "${target_geno}")
+        	prsice_name=$(basename -- "${prsice}")
+        	zcat ${base_assoc} > ${loc}/${base_name}
+        	awk 'NR!=1 {print $1,$3}' ${target_pheno} > ${loc}/${target_pheno_name}
+        	cp ${prsice} ${loc}/${prsice_name}
+        	cp ${target_geno}.bed ${loc}/${target_geno_name}.bed
+        	cp ${target_geno}.bim ${loc}/${target_geno_name}.bim
+        	cp ${target_geno}.fam ${loc}/${target_geno_name}.fam
+        	prsice=${loc}/${prsice_name}
+        	base_assoc=${loc}/${base_name}
+        	target_pheno=${loc}/${target_pheno_name}
+        	target_geno=${loc}/${target_geno_name}
+        	final_out=${out}
+        	out=${loc}/${out}
+                cd ${loc}/
+        	ls -lht    
                 # Use only 1 thread for PRSice such that it is fair for other programs
                 \time -f "%e %S %U %P %K %I %O %W %M" -o ${out}.tmp \
                     Rscript ${prsice} \
-                        base ${loc}/${out}-tmp/${out}.assoc \
-                        target ${loc}/${target_geno} \
+                        base ${base_assoc} \
+                        target ${target_geno} \
                         covary F \
-                        pheno.file ${loc}/${out}-tmp/${out}.pheno \
+                        pheno.file ${target_pheno} \
                         binary.target F \
-                        plink /opt/apps/bioinformatics/plink2/1.90b3.38/plink
-                # Get R2, 
+                        plink /hpc/packages/minerva-common/plink/1.90b6.7/plink
+                # Get R2,
+                ls -lht 
                 r2=`awk -v maxR=0 'NR!=1 && $3>maxR{maxR=$3; maxP=$2}END{print maxR}' PRSice_RAW_RESULTS_DATA.txt`
                 pvalue=`awk -v maxR=0 'NR!=1 && $3>maxR{maxR=$3; maxP=$2}END{print maxP}' PRSice_RAW_RESULTS_DATA.txt`
-                awk -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v P=${pvalue} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,Size,Herit,NumCausal,R2,P,"NA","NA","PRSice-1.25"}' ${out}.tmp > ${loc}/${out}.prsice.old.result
-                cd ${loc}
-                rm -rf ${loc}/${out}-tmp
+		awk -v BaseSize=${base_size} -v Size=${target_size} -v Herit=${herit} -v NumCausal=${num_causal} -v R2=${r2} -v P=${pvalue} -v VR2=${valid_r2} -v VP=${valid_pvalue} 'NR==1{print "Real Kernel User Percentage AvgTotalMem Input Output Swap MaxKB Base.Size Target.Size Heritability Num.Causal Target.R2 Target.P Valid.R2 Valid.P Program"}{print $0,BaseSize, Size,Herit,NumCausal,R2,P,VR2,VP,"PRSice-1.25"}' ${out}.tmp > ${out}.prsice.old.result
+		cp ${out}.prsice.old.result /sc/orga/projects/psychgen/ukb/usrs/sam/project/prs/giga_software/work/%FILE%/
+		rm -rf ${loc}
             fi
         fi
         

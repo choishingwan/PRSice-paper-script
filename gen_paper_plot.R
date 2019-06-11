@@ -2,16 +2,14 @@ library(dplyr)
 library(ggplot2)
 library(scales)
 library(tidyr)
-files <- list.files(pattern = "result.csv$", recursive=T)
+files <- list.files(pattern = "result$", recursive=T)
 res <- NULL
-idx <- 1
 for (i in files) {
-    tmp <- read.csv(i)
-    tmp$Perm <- idx
-    idx <- idx + 1
+    tmp <- read.table(i, header=T, sep=" ")
+    tmp$Perm <- strsplit(i, split="/")[[1]][1]
     res <- rbind(res, tmp)
 }
-levels(res$Program)[2] <- "LDpred"
+
 # Generate Time plot
 # Heritability=0 is only done for PRSice-1.25 vs PRSice-2 comparison
 # While it doesn't really matter if we merge that into our final 
@@ -20,7 +18,6 @@ levels(res$Program)[2] <- "LDpred"
 # more "stable" run-time)
 res %>%
     filter(!is.na(Target.R2)) %>%
-    filter(Heritability!=0) %>% 
     group_by(Target.Size, Program) %>%
     summarize(
         Avg.Time = mean(Real / 60, na.rm = T),
@@ -58,7 +55,7 @@ gg_color_hue <- function(n) {
 res %>%
     filter(!is.na(Target.R2)) %>%
     filter(Target.Size< 100000) %>%
-    filter(Heritability==0) %>%
+    filter(grepl("PRSice",Program)) %>%
     group_by(Target.Size, Program) %>%
     summarize(
         Avg.Time = mean(Real / 60, na.rm = T),
@@ -80,31 +77,31 @@ d <- default.color[1]
 default.color[1] <- default.color[3]
 default.color[3] <- d
 prsice.time.graph <- prsice.time.res %>% 
-	ggplot(
-		aes(x = log10(Target.Size),
-			y = Avg.Time,
-			ymin = Avg.Time - SE.Time,
-			ymax = Avg.Time + SE.Time,
-			color = Program
-		)
-	) + 
-	geom_point() +
+    ggplot(
+        aes(x = log10(Target.Size),
+            y = Avg.Time,
+            ymin = Avg.Time - SD.Time,
+            ymax = Avg.Time + SD.Time,
+            color = Program
+        )
+    ) + 
+    geom_point() +
     geom_pointrange() +
     geom_line(size = line.size) +
     scale_x_continuous(breaks = c(2, 3, 4, 5), labels = comma(c(100, 1000, 10000, 100000))) +
     labs(x = "Number of Samples", y = "Average Time (in Minute)") +
     guides(color = guide_legend(title = "Program")) +
     theme_sam+
-	scale_color_manual(values=c(default.color[4],default.color[3]))
+    scale_color_manual(values=c(default.color[4],default.color[3]))
 
-ggsave("PRSice.time.png", prsice.time.graph, height = 7, width = 7)		
+ggsave("PRSice.time.png", prsice.time.graph, height = 7, width = 7)        
 
 prsice.mem.graph <- prsice.time.res %>% 
-	ggplot(aes(
+    ggplot(aes(
         x = log10(Target.Size),
         y = Avg.Mem,
-        ymin = Avg.Mem - SE.Mem,
-        ymax = Avg.Mem + SE.Mem,
+        ymin = Avg.Mem - SD.Mem,
+        ymax = Avg.Mem + SD.Mem,
         color = Program
     )) +
     geom_point() +
@@ -114,7 +111,7 @@ prsice.mem.graph <- prsice.time.res %>%
     guides(color = guide_legend(title = "Program")) +
     labs(x = "Number of Samples", y = "Average Memory (in GB)") +
     theme_sam+
-	scale_color_manual(values=c(default.color[4],default.color[3]))
+    scale_color_manual(values=c(default.color[4],default.color[3]))
 
 ggsave("PRSice.Memory.png", width = 7, height = 7, prsice.mem.graph)
 
@@ -124,8 +121,8 @@ time.graph <- time.res %>%
         aes(
             x = log10(Target.Size),
             y = Avg.Time,
-            ymin = Avg.Time - SE.Time,
-            ymax = Avg.Time + SE.Time,
+            ymin = Avg.Time - SD.Time,
+            ymax = Avg.Time + SD.Time,
             color = Program
         )
     ) +
@@ -145,8 +142,8 @@ mem.graph <- time.res %>%
     ggplot(aes(
         x = log10(Target.Size),
         y = Avg.Mem,
-        ymin = Avg.Mem - SE.Mem,
-        ymax = Avg.Mem + SE.Mem,
+        ymin = Avg.Mem - SD.Mem,
+        ymax = Avg.Mem + SD.Mem,
         color = Program
     )) +
     geom_point() +
@@ -156,8 +153,8 @@ mem.graph <- time.res %>%
     guides(color = guide_legend(title = "Program")) +
     labs(x = "Number of Samples", y = "Average Memory (in GB)") +
     scale_color_manual(values=c(default.color[2], default.color[1],default.color[3]))+
-	theme_sam
-	
+    theme_sam
+    
 ggsave("Memory.png", width = 7, height = 7, mem.graph)
 
 # Now the overall performance graphs
@@ -166,46 +163,43 @@ performance$Program <-
     factor(performance$Program,
            levels = c("lassosum", "PRSice-2", "LDpred"))
 performance %>%
-    filter(Heritability == 0.6) %>%
+    filter(Heritability == 0.2) %>%
     filter(Target.Size == 10000) %>%
+    filter(Base.Size==50000) %>%
     ggplot(aes(
-        x = log10(Num.Causal),
+        x = as.factor(Num.Causal),
         y = Target.R2,
         color = Program,
-        fill = Program,
         group = interaction(Program, Num.Causal)
     )) +
-    geom_boxplot(position = position_dodge()) +
+    geom_boxplot(position = position_dodge(), outlier.shape = NA) +
     guides(color = guide_legend(title = "Program")) +
-	scale_color_manual(values=c(default.color[1],default.color[3], default.color[2]))+
+    scale_color_manual(values=c(default.color[1],default.color[3], default.color[2]))+
     scale_fill_manual(values=c(default.color[1],default.color[3], default.color[2]))+
     labs(x = "Number of Causal SNPs",
          y = expression(paste("Trait variance explained (", R ^ 2, ")", sep = " "))) +
     theme_sam +
-    scale_x_continuous(breaks = c(2, 3, 4, 5), labels = comma(c(100, 1000, 10000, 100000))) -> perform.plot
+    scale_x_discrete(labels = c("100","1,000", "10,000", "100,000", "All")) -> perform.plot
 ggsave("Performance.png",
        width = 7,
        height = 7,
        perform.plot)
 
 performance %>%
-    filter(Heritability != 0) %>%
     ggplot(aes(
-        x = log10(Num.Causal),
+        x = as.factor(Num.Causal),
         y = Target.R2,
         color = Program,
-        fill = Program,
         group = interaction(Program, Num.Causal)
     )) +
-    geom_boxplot(position = position_dodge()) +
+    geom_boxplot(position = position_dodge(), outlier.shape = NA) +
     guides(color = guide_legend(title = "Program")) +
     labs(x = "Number of Causal SNPs",
          y = expression(paste("Trait variance explained (", R ^ 2, ")", sep = " "))) +
     theme_sam +
-	scale_color_manual(values=c(default.color[1],default.color[3], default.color[2]))+
-	scale_fill_manual(values=c(default.color[1],default.color[3], default.color[2]))+
-    scale_x_continuous(breaks = c(2, 3, 4, 5), labels = comma(c(100, 1000, 10000, 100000))) +
-    facet_grid(Heritability ~ Target.Size, scales = "free") -> perform.plot.full
+    scale_color_manual(values=c(default.color[1],default.color[3], default.color[2]))+
+    scale_x_discrete(labels=c("100","1,000","10,000","100,000", "All")) +
+    facet_grid(Heritability+Base.Size~Target.Size, scales = "free") -> perform.plot.full
 
 ggsave(
     "Performance.supplementary.png",
@@ -272,14 +266,13 @@ time.res %>%
     select(Program, Target.Size, N) %>%
     spread(Target.Size, N) %>%
     print
-levels(res$Program)[3:4] <- c("PRSice", "PRSice2")
 res %>% 
-    filter(Program=="PRSice2" | Program=="PRSice") %>% 
-    filter(Heritability==0 & Target.Size < 100000) %>% 
-    select(Program, Real, Perm, Target.Size, Num.Causal)%>%
+    filter(Program=="PRSice-2" | Program=="PRSice-1.25") %>% 
+    filter(Target.Size < 100000 & Heritability==0.2) %>% 
+    select(Program, Real, Perm, Target.Size, Num.Causal, Base.Size)%>%
     spread(Program, Real) -> old.vs.new
-prsice.comp.res <- t.test(old.vs.new$PRSice2, old.vs.new$PRSice, alternative="less")
-fold <- mean(old.vs.new$PRSice/old.vs.new$PRSice2, na.rm=T)
+prsice.comp.res <- t.test(old.vs.new$`PRSice-2`, old.vs.new$`PRSice-1.25`, alternative="less")
+fold <- mean(old.vs.new$`PRSice-1.25`/old.vs.new$`PRSice-2`, na.rm=T)
 print(paste(
     "PRSice-2 vs PRSice-1.25: p =",
     format(prsice.comp.res$p.value, digits = 3),
@@ -290,12 +283,13 @@ print(paste(
 ))
 
 res %>% 
-    filter(Program=="PRSice2" | Program=="lassosum") %>% 
+    filter(!is.na(Target.R2))%>%
+    filter(Program=="PRSice-2" | Program=="lassosum") %>% 
     filter(Heritability!=0) %>% 
-    select(Program, Real, Perm, Target.Size, Num.Causal, Heritability)%>%
+    select(Program, Real, Perm, Target.Size, Num.Causal, Heritability, Base.Size)%>%
     spread(Program, Real) -> prsice.vs.lassosum
-fold <- mean(prsice.vs.lassosum$lassosum/prsice.vs.lassosum$PRSice2, na.rm=T)
-prsice.vs.lassosum.res <- t.test(prsice.vs.lassosum$PRSice2, prsice.vs.lassosum$lassosum, alternative="less")
+fold <- mean(prsice.vs.lassosum$lassosum/prsice.vs.lassosum$PRSice-2, na.rm=T)
+prsice.vs.lassosum.res <- t.test(prsice.vs.lassosum$PRSice-2, prsice.vs.lassosum$lassosum, alternative="less")
 
 print(paste(
     "Time PRSice-2 vs lassosum: p =",
@@ -307,12 +301,12 @@ print(paste(
 ))
 
 res %>% 
-    filter(Program=="PRSice2" | Program=="lassosum") %>% 
+    filter(Program=="PRSice-2" | Program=="lassosum") %>% 
     filter(Heritability!=0) %>% 
-    select(Program, MaxKB, Perm, Target.Size, Num.Causal, Heritability)%>%
+    select(Program, MaxKB, Perm, Target.Size, Num.Causal, Heritability, Base.Size)%>%
     spread(Program, MaxKB) -> prsice.vs.lassosum
-fold <- mean(prsice.vs.lassosum$lassosum/prsice.vs.lassosum$PRSice2, na.rm=T)
-prsice.vs.lassosum.res <- t.test(prsice.vs.lassosum$PRSice2, prsice.vs.lassosum$lassosum, alternative="less")
+fold <- mean(prsice.vs.lassosum$lassosum/prsice.vs.lassosum$PRSice-2, na.rm=T)
+prsice.vs.lassosum.res <- t.test(prsice.vs.lassosum$PRSice-2, prsice.vs.lassosum$lassosum, alternative="less")
 
 print(paste(
     "Mem PRSice-2 vs lassosum: p =",
@@ -324,12 +318,12 @@ print(paste(
 ))
 
 res %>% 
-    filter(Program=="PRSice2" | Program=="LDpred") %>% 
+    filter(Program=="PRSice-2" | Program=="LDpred") %>% 
     filter(Heritability!=0) %>% 
-    select(Program, Real, Perm, Target.Size, Num.Causal, Heritability)%>%
+    select(Program, Real, Perm, Target.Size, Num.Causal, Heritability, Base.Size)%>%
     spread(Program, Real) -> prsice.vs.ldpred
-fold <- mean(prsice.vs.ldpred$LDpred/prsice.vs.ldpred$PRSice2, na.rm=T)
-prsice.vs.ldpred.res <- t.test(prsice.vs.ldpred$PRSice2, prsice.vs.ldpred$LDpred, alternative="less")
+fold <- mean(prsice.vs.ldpred$LDpred/prsice.vs.ldpred$PRSice-2, na.rm=T)
+prsice.vs.ldpred.res <- t.test(prsice.vs.ldpred$PRSice-2, prsice.vs.ldpred$LDpred, alternative="less")
 
 print(paste(
     "Time PRSice-2 vs LDpred: p =",
@@ -342,12 +336,12 @@ print(paste(
 
 
 res %>% 
-    filter(Program=="PRSice2" | Program=="LDpred") %>% 
+    filter(Program=="PRSice-2" | Program=="LDpred") %>% 
     filter(Heritability!=0) %>% 
-    select(Program, MaxKB, Perm, Target.Size, Num.Causal, Heritability)%>%
+    select(Program, MaxKB, Perm, Target.Size, Num.Causal, Heritability, Base.Size)%>%
     spread(Program, MaxKB) -> prsice.vs.ldpred
-fold <- mean(prsice.vs.ldpred$LDpred/prsice.vs.ldpred$PRSice2, na.rm=T)
-prsice.vs.ldpred.res <- t.test(prsice.vs.ldpred$PRSice2, prsice.vs.ldpred$LDpred, alternative="less")
+fold <- mean(prsice.vs.ldpred$LDpred/prsice.vs.ldpred$PRSice-2, na.rm=T)
+prsice.vs.ldpred.res <- t.test(prsice.vs.ldpred$PRSice-2, prsice.vs.ldpred$LDpred, alternative="less")
 
 print(paste(
     "Mem PRSice-2 vs LDpred: p =",
@@ -357,3 +351,4 @@ print(paste(
     "fold =",
     format(fold, digits = 5)
 ))
+

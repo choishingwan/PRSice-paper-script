@@ -1,21 +1,24 @@
-#!/bin/bash
-#$ -cwd
-#$ -j y
-#$ -S /bin/bash
-#$ -q HighMemLongterm.q,LowMemLongterm.q,LowMemShortterm.q
-#$ -t 1:20
+#BSUB -L /bin/sh             # script shell language (/bin/tcsh, /bin/ksh etc.)
+#BSUB -n 1              # number of cores required
+#BSUB -J run_gwas[1-20]               # name of job
+#BSUB -q express               # target queue for job execution
+#BSUB -W 2:00                # wall clock limit for job
+#BSUB -P acc_psychgen             # project to charge time
+#BSUB -o %J.stdout
+#BSUB -eo %J.stderr
 
-module add bioinformatics/plink2/1.90b3.38
-module add bioinformatics/R/3.3.3
-module add compilers/gcc/6.2.0
-
+module add plink/1.90b6.7
+file=%FILE%
 # Need an input file prefix
 # Required input
 # bfile -> Genotype file prefix
 # snp -> SNP filtering file
 # file -> PRefix of GWAS guide
 # script -> processing script (p2t.Rfor converting binary assoc file
-filename=${file}.gwas.${SGE_TASK_ID}
+bfile=/sc/orga/projects/psychgen/ukb/usrs/sam/project/prs/giga_software/raw/ukb_binary 
+snp=/sc/orga/projects/psychgen/ukb/usrs/sam/project/prs/giga_software/raw/ukb_binary.qc.snp
+
+filename=${file}.gwas.${LSB_JOBINDEX}
 {
     read -r line
     while read -r line; do
